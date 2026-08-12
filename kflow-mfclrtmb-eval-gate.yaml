@@ -1,0 +1,50 @@
+name: ofp-sam-bet-yft-2026-single-area-mfclrtmb-gate-20260812
+description: Evaluate the fitted single-area BET final.par with the pinned fixed mfclrtmb production path before any MCMC fanout.
+command: bash inst/mfclrtmb-mcmc/run-eval-gate.sh
+docker_image: ghcr.io/pacificcommunity/tuna-flow@sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27
+remote_host: suvofpsubmit.corp.spc.int
+remote_user: kyuhank
+remote_base_dir: /home/kyuhank/KflowOutput
+slot_requirements: 'regexp("^suvofp", Machine) && OpSys == "LINUX" && Arch == "X86_64" && (HasDocker =?= true)'
+resources:
+  cpus: 2
+  memory: 16GB
+  disk: 20GB
+exclude_machines: []
+exclude_slots: []
+input_jobs: []
+triggers: {}
+env:
+  WORKFLOW_SHA: ""
+  SINGLE_AREA_MODEL_SOURCE_SHA: 5363029b509cacf902aef2866efdc04634c89045
+  MCMC_FINAL_PAR_SHA256: 5bfab1a2a57a11e1e91a8da75abfb2e4cc83551bab52504fedaec63638f44e83
+  MCMC_BET_FRQ_SHA256: 7982eab77ffd337e446c0ae3496c4b8f4a4c88aa3ff54d514cc80021288e6989
+  MCMC_BET_INI_SHA256: 5ba4fe551494f8d8cc10d53d990355d3e6d9719de499e63d5c32191facc87ab5
+  MCMC_BET_TAG_SHA256: e1007498fa893d475a5f39f81a00b1e764600875e142d7999548b2716b684a83
+  MCMC_BET_AGE_LENGTH_SHA256: 9118e61f99b7aaba097f4aa9f3ea31ab27419cd27a25781340f6263b41b3ec2f
+  KFLOW_RUNTIME_IMAGE: ghcr.io/pacificcommunity/tuna-flow@sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27
+  MFCLRTMB_FIX_REPO: PacificCommunity/ofp-sam-mfclrtmb
+  MFCLRTMB_FIX_REF: ""
+  MFCLRTMB_FIX_SHA: ""
+  MFCLRTMB_OBJECTIVE_TOLERANCE: "0.000001"
+  MFCLRTMB_GROWTH_GRADIENT_TOLERANCE: "0.00000005"
+  MFCLRTMB_MGC_TOLERANCE: "0.00000005"
+tags:
+  stage: mfclrtmb-eval-gate
+  species: BET
+  assessment_year: "2026"
+  configuration: single-area
+  site: suva
+output_patterns:
+  - outputs/mfclrtmb-eval-gate/**
+metadata:
+  internal_task: true
+  task_visibility: internal
+  task_role: mfclrtmb-eval-gate
+  workflow_contract: gate-then-v26-pilot-then-production-v1
+  input_jobs_override: true
+  job_config:
+    required:
+      - WORKFLOW_SHA
+      - MFCLRTMB_FIX_REF
+      - MFCLRTMB_FIX_SHA

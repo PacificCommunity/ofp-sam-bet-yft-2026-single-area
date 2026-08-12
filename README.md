@@ -15,6 +15,15 @@ BET and YFT jitter and retrospective diagnostics use their model-specific doital
 
 Only model inputs are versioned here. Fit reports, Hessian files, profiles, and other generated outputs are produced by Kflow.
 
+## Experimental mfclrtmb work
+
+The isolated `mfclrtmb-mcmc-2026-08-12` branch contains separate manual
+native-parity gate, mandatory short tuna-flow v2.6 pilot, and explicitly
+approved ten-chain SparseNUTS stages for the BET single-area model. This is
+Bayesian-feasibility work, not a stock assessment. See
+[`docs/mfclrtmb-mcmc.md`](docs/mfclrtmb-mcmc.md) for the safeguards and dry-run
+commands. None of the three tasks has automatic Kflow triggers.
+
 ## Fishery labels
 
 Each model carries its own labels.tmp and a generated fishery_map.R. All fisheries have MFCL region 1; historical area text in fishery display names is retained only as a label.
