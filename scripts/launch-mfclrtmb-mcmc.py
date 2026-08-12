@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = "PacificCommunity/ofp-sam-bet-yft-2026-single-area"
 SOURCE_SHA = "5363029b509cacf902aef2866efdc04634c89045"
 BRANCH = "mfclrtmb-mcmc-2026-08-12"
-WORKFLOW_ID = "single-area-bet-mfclrtmb-mcmc-20260812"
+WORKFLOW_ID = "single-area-bet-mfclrtmb-mcmc-20260813"
 RUNTIME_IMAGE = (
     "ghcr.io/pacificcommunity/tuna-flow@"
     "sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27"
@@ -86,7 +86,7 @@ PILOT_ARTIFACTS = (
 DEFAULT_STATE = (
     Path.home()
     / ".local/state/ofp-sam-bet-yft-2026-single-area"
-    / "mfclrtmb-mcmc-20260812.json"
+    / "mfclrtmb-mcmc-20260813.json"
 )
 SERVER_REPO_METADATA_KEYS = {
     "repo_private",
@@ -137,10 +137,9 @@ class KflowHTTPError(RuntimeError):
 
 
 class Kflow:
-    def __init__(self, base_url: str, token: str, github_token: str = "") -> None:
+    def __init__(self, base_url: str, token: str) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self.github_token = github_token.strip()
 
     def request(
         self,
@@ -152,8 +151,6 @@ class Kflow:
         headers = {"Authorization": f"Bearer {self.token}"}
         if payload is not None:
             headers["Content-Type"] = "application/json"
-        if self.github_token:
-            headers["X-GitHub-Token"] = self.github_token
         request = urllib.request.Request(
             f"{self.base_url}{path}", data=body, headers=headers, method=method
         )
@@ -1101,7 +1098,7 @@ def seal_job(task: str, payload: dict[str, Any], label: str) -> dict[str, Any]:
     digest = canonical_sha256(
         {"contract_version": 1, "workflow_id": WORKFLOW_ID, "task": task, "payload": payload}
     )
-    key = f"mfclrtmb-mcmc-20260812-{label}-{digest}"
+    key = f"mfclrtmb-mcmc-20260813-{label}-{digest}"
     payload["env"] = {
         **payload["env"],
         "JOB_KEY": key,
@@ -1164,6 +1161,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "MFCLRTMB_FIX_REF": fix_ref,
         "MFCLRTMB_FIX_SHA": fix_sha,
         "KFLOW_RUNTIME_IMAGE": RUNTIME_IMAGE,
+        "KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME": "1",
         "SPARSENUTS_REF": SPARSENUTS_SHA,
         "SPARSENUTS_VERSION": SPARSENUTS_VERSION,
         "STANESTIMATORS_REF": STANESTIMATORS_SHA,
@@ -1171,8 +1169,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         **{env_name: digest for _, (env_name, digest) in INPUT_SHA256.items()},
     }
     base_metadata = {
-        "internal_task": True,
-        "task_visibility": "internal",
+        "internal_task": False,
+        "task_visibility": "primary",
         **provenance,
     }
 
@@ -1452,11 +1450,11 @@ def main(argv: list[str] | None = None) -> int:
     token = os.environ.get("KFLOW_API_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Set KFLOW_API_TOKEN")
-    github_token = os.environ.get(
-        "KFLOW_GITHUB_TOKEN",
-        os.environ.get("GITHUB_PAT", os.environ.get("GITHUB_TOKEN", "")),
-    )
-    api = Kflow(args.kflow_url, token, github_token)
+    # Deliberately omit the client GitHub credential header. The audited Kflow
+    # service credential is used for the primary checkout and protected runtime
+    # forwarding; a caller token must not silently override that known-good
+    # server credential.
+    api = Kflow(args.kflow_url, token)
     with DurableState(args.state_file, workflow_sha) as state:
         if args.mode in {"pilot", "chains"}:
             verify_gate_for_plan(api, plan, args)

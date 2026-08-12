@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import os
 import re
 import stat
 import subprocess
@@ -212,6 +213,11 @@ class WorkflowConfigurationTests(unittest.TestCase):
             self.assertEqual(config["slot_requirements"], launcher.SLOT_REQUIREMENTS)
             self.assertEqual(config["resources"]["cpus"], 2)
             self.assertEqual(config["resources"]["memory"], "16GB")
+            self.assertEqual(
+                config["env"]["KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME"], "1"
+            )
+            self.assertFalse(config["metadata"]["internal_task"])
+            self.assertEqual(config["metadata"]["task_visibility"], "primary")
 
     def test_all_five_input_hashes_are_explicit_in_both_tasks(self) -> None:
         for config in (self.gate, self.chain):
@@ -233,6 +239,14 @@ class WorkflowConfigurationTests(unittest.TestCase):
         chain_r = (ROOT / "inst/mfclrtmb-mcmc/run-chain.R").read_text()
         self.assertIn("git rev-parse 'HEAD^{commit}'", install)
         self.assertIn("WORKFLOW_SHA", install)
+        self.assertIn("GIT_ASKPASS", install)
+        self.assertIn("GITHUB_PAT", install)
+        self.assertIn("unset GIT_ASKPASS GIT_TERMINAL_PROMPT GITHUB_PAT GIT_PAT", install)
+        self.assertNotIn("X-GitHub-Token", LAUNCHER.read_text(encoding="utf-8"))
+        self.assertIn(
+            '"KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME": "1"',
+            LAUNCHER.read_text(encoding="utf-8"),
+        )
         self.assertIn("andrjohns/StanEstimators", chain_shell)
         self.assertIn("RemoteSha", chain_shell)
         for env_name in [value[0] for value in launcher.INPUT_SHA256.values()]:
@@ -260,6 +274,122 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 if keys.count(key) > 1:
                     duplicates.append((node.lineno, key))
         self.assertEqual(duplicates, [])
+
+
+class PrivateSourceAuthenticationTests(unittest.TestCase):
+    def run_installer(
+        self, *, token: str | None, fail_fetch: bool = False
+    ) -> tuple[subprocess.CompletedProcess[str], Path, tempfile.TemporaryDirectory[str]]:
+        temporary = tempfile.TemporaryDirectory()
+        root = Path(temporary.name)
+        fake_bin = root / "bin"
+        work = root / "work"
+        fake_bin.mkdir()
+        work.mkdir()
+        git_log = root / "git.log"
+        child_env = root / "child-env.txt"
+        fake_git = fake_bin / "git"
+        fake_git.write_text(
+            """#!/usr/bin/env python3
+import os, pathlib, subprocess, sys
+args = sys.argv[1:]
+log = pathlib.Path(os.environ["FAKE_GIT_LOG"])
+with log.open("a", encoding="utf-8") as handle:
+    handle.write(" ".join(args) + "\\n")
+if args[:1] == ["check-ref-format"]:
+    raise SystemExit(0)
+if args[:2] == ["rev-parse", "HEAD^{commit}"]:
+    print(os.environ["WORKFLOW_SHA"]); raise SystemExit(0)
+if args[:2] == ["init", "--quiet"]:
+    pathlib.Path(args[2]).mkdir(parents=True, exist_ok=False); raise SystemExit(0)
+if "fetch" in args:
+    helper = pathlib.Path(os.environ["GIT_ASKPASS"])
+    assert helper.is_file() and (helper.stat().st_mode & 0o777) == 0o700
+    assert subprocess.check_output([str(helper), "Username"], text=True).strip() == "x-access-token"
+    assert subprocess.check_output([str(helper), "Password"], text=True).strip() == os.environ["EXPECTED_TOKEN"]
+    raise SystemExit(23 if os.environ.get("FAIL_FETCH") == "1" else 0)
+if "rev-parse" in args:
+    expression = args[-1]
+    print("c" * 40 if expression == "HEAD^{tree}" else os.environ["MFCLRTMB_FIX_SHA"])
+    raise SystemExit(0)
+if "status" in args or "remote" in args or "checkout" in args:
+    raise SystemExit(0)
+raise SystemExit("unexpected fake git invocation: " + repr(args))
+""",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o700)
+        for executable in ("R", "Rscript"):
+            path = fake_bin / executable
+            path.write_text(
+                """#!/usr/bin/env python3
+import os, pathlib
+path = pathlib.Path(os.environ["CHILD_ENV_LOG"])
+with path.open("a", encoding="utf-8") as handle:
+    handle.write("GITHUB_PAT=" + str("GITHUB_PAT" in os.environ) + "\\n")
+    handle.write("GIT_PAT=" + str("GIT_PAT" in os.environ) + "\\n")
+""",
+                encoding="utf-8",
+            )
+            path.chmod(0o700)
+        env = {
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "KFLOW_WORK_ROOT": str(work),
+            "R_LIBS_USER": str(work / "R-library"),
+            "WORKFLOW_SHA": WORKFLOW_SHA,
+            "SINGLE_AREA_MODEL_SOURCE_SHA": launcher.SOURCE_SHA,
+            "KFLOW_RUNTIME_IMAGE": launcher.RUNTIME_IMAGE,
+            "KFLOW_DOCKER_IMAGE": launcher.RUNTIME_IMAGE,
+            "MFCLRTMB_FIX_REPO": "PacificCommunity/ofp-sam-mfclrtmb",
+            "MFCLRTMB_FIX_REF": FIX_REF,
+            "MFCLRTMB_FIX_SHA": FIX_SHA,
+            "FAKE_GIT_LOG": str(git_log),
+            "CHILD_ENV_LOG": str(child_env),
+            "EXPECTED_TOKEN": token or "",
+            "FAIL_FETCH": "1" if fail_fetch else "0",
+        }
+        for name in ("GITHUB_PAT", "GIT_PAT"):
+            env.pop(name, None)
+        if token is not None:
+            env["GITHUB_PAT"] = token
+        completed = subprocess.run(
+            ["bash", str(ROOT / "inst/mfclrtmb-mcmc/install-pinned-mfclrtmb.sh")],
+            cwd=root,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        return completed, child_env, temporary
+
+    def test_private_source_fetch_requires_forwarded_token(self) -> None:
+        completed, _, temporary = self.run_installer(token=None)
+        self.addCleanup(temporary.cleanup)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("did not forward GitHub authentication", completed.stderr)
+
+    def test_success_cleans_helper_and_scrubs_child_environment(self) -> None:
+        token = "test-private-token-not-for-logs"
+        completed, child_env, temporary = self.run_installer(token=token)
+        self.addCleanup(temporary.cleanup)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(list((Path(temporary.name) / "work").glob(".mfclrtmb-git-askpass.*")), [])
+        self.assertEqual(child_env.read_text(encoding="utf-8").splitlines(), [
+            "GITHUB_PAT=False", "GIT_PAT=False", "GITHUB_PAT=False", "GIT_PAT=False"
+        ])
+        self.assertNotIn(token, completed.stdout + completed.stderr)
+        provenance = Path(temporary.name) / "work" / "mfclrtmb-source-provenance.txt"
+        self.assertNotIn(token, provenance.read_text(encoding="utf-8"))
+
+    def test_failed_fetch_cleans_helper_and_does_not_run_installers(self) -> None:
+        token = "test-private-token-not-for-logs"
+        completed, child_env, temporary = self.run_installer(token=token, fail_fetch=True)
+        self.addCleanup(temporary.cleanup)
+        self.assertEqual(completed.returncode, 23)
+        self.assertFalse(child_env.exists())
+        self.assertEqual(list((Path(temporary.name) / "work").glob(".mfclrtmb-git-askpass.*")), [])
+        self.assertNotIn(token, completed.stdout + completed.stderr)
 
     def test_runtime_yaml_loader_rejects_duplicate_keys(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "duplicate key 'branch'"):

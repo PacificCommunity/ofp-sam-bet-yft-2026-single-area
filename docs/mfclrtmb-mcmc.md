@@ -45,6 +45,11 @@ Before any real API call, the launcher requires all of the following:
 - tuna-flow v2.6 is selected by digest
   `sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27`;
 - the canonical Suva submitter and Linux/X86_64/Docker slot are explicit;
+- Kflow forwards its audited server-side GitHub credential only to the runtime
+  (the launcher deliberately does not send an overriding client credential) so the pinned
+  private `mfclrtmb` source can be fetched without embedding a credential in
+  Git configuration, task metadata, logs, or artifacts; the credential is
+  unset immediately after that source fetch;
 - SparseNUTS 1.0.2 commit
   `2f3f1626219afce68fa2da0d884d4f2dca138117` and StanEstimators 0.3.1
   commit `d19186c7079c6a08160bb77db5b577a203254bf1` are installed from and
@@ -76,6 +81,11 @@ cannot retroactively prevent it. Use one launcher/state file and wait for each
 command to return before invoking it again. Every real launch requires
 `--confirm-sole-launcher` as an explicit attestation of that operating rule; it
 is not a substitute for a server-side uniqueness constraint.
+
+The gate, pilot, and production registrations use primary dashboard
+visibility. The superseded 20260812 gate remains under Kflow's
+**Advanced / internal tasks** section as the immutable record of its failed
+private-source authentication attempt.
 
 ## 1. Dry-run and submit the gate
 

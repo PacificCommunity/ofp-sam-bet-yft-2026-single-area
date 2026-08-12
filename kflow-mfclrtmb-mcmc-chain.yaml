@@ -1,5 +1,5 @@
-name: ofp-sam-bet-yft-2026-single-area-mfclrtmb-chain-20260812
-pilot_name: ofp-sam-bet-yft-2026-single-area-mfclrtmb-pilot-20260812
+name: ofp-sam-bet-yft-2026-single-area-mfclrtmb-chain-20260813
+pilot_name: ofp-sam-bet-yft-2026-single-area-mfclrtmb-pilot-20260813
 description: Run one approved short-pilot or production single-area BET mfclrtmb SparseNUTS chain from the exact final.par MLE.
 command: bash inst/mfclrtmb-mcmc/run-chain.sh
 docker_image: ghcr.io/pacificcommunity/tuna-flow@sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27
@@ -24,6 +24,7 @@ env:
   MCMC_BET_TAG_SHA256: e1007498fa893d475a5f39f81a00b1e764600875e142d7999548b2716b684a83
   MCMC_BET_AGE_LENGTH_SHA256: 9118e61f99b7aaba097f4aa9f3ea31ab27419cd27a25781340f6263b41b3ec2f
   KFLOW_RUNTIME_IMAGE: ghcr.io/pacificcommunity/tuna-flow@sha256:7b9dc95f535025a42109ac958c4faa3af96592cd19510ac0be15af4478eccf27
+  KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME: "1"
   MFCLRTMB_FIX_REPO: PacificCommunity/ofp-sam-mfclrtmb
   MFCLRTMB_FIX_REF: ""
   MFCLRTMB_FIX_SHA: ""
@@ -57,14 +58,15 @@ output_patterns:
   - outputs/mfclrtmb-mcmc/**
   - outputs/mfclrtmb-mcmc-pilot/**
 metadata:
-  internal_task: true
-  task_visibility: internal
+  internal_task: false
+  task_visibility: primary
   task_role: mfclrtmb-mcmc-chain
-  workflow_contract: gate-then-v26-pilot-then-production-v1
+  workflow_contract: gate-then-v26-pilot-then-production-v2
   input_jobs_override: true
   job_config:
     required:
       - WORKFLOW_SHA
+      - KFLOW_FORWARD_GITHUB_TOKEN_TO_RUNTIME
       - MFCLRTMB_FIX_REF
       - MFCLRTMB_FIX_SHA
       - SPARSENUTS_REF

@@ -67,6 +67,30 @@ if [[ -e "$source_root" ]]; then
 fi
 
 mkdir -p "$work_root" "$library_root"
+if [[ -z "${GITHUB_PAT:-${GIT_PAT:-}}" ]]; then
+  echo "[mfclrtmb-source] Kflow did not forward GitHub authentication for the private source repository." >&2
+  exit 2
+fi
+askpass="$(mktemp "${work_root}/.mfclrtmb-git-askpass.XXXXXX")" || {
+  echo "[mfclrtmb-source] Could not create the temporary GitHub credential helper." >&2
+  exit 2
+}
+cleanup_askpass() {
+  rm -f -- "$askpass"
+}
+trap cleanup_askpass EXIT
+cat > "$askpass" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  *Username*) printf '%s\n' 'x-access-token' ;;
+  *Password*) printf '%s\n' "${GITHUB_PAT:-${GIT_PAT:-}}" ;;
+  *) printf '\n' ;;
+esac
+EOF
+chmod 700 "$askpass"
+export GIT_ASKPASS="$askpass"
+export GIT_TERMINAL_PROMPT=0
+
 git init --quiet "$source_root"
 git -C "$source_root" remote add origin "https://github.com/${repo}.git"
 git -C "$source_root" fetch --quiet --no-tags --depth 1 origin "$ref"
@@ -86,6 +110,9 @@ if [[ -n "$(git -C "$source_root" status --porcelain=v1)" ]]; then
   echo "[mfclrtmb-source] Refusing to install a dirty source checkout." >&2
   exit 2
 fi
+cleanup_askpass
+trap - EXIT
+unset GIT_ASKPASS GIT_TERMINAL_PROMPT GITHUB_PAT GIT_PAT
 
 source_tree="$(git -C "$source_root" rev-parse 'HEAD^{tree}')"
 printf '%s\n' \

@@ -16,6 +16,7 @@ export VECLIB_MAXIMUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
 bash inst/mfclrtmb-mcmc/install-pinned-mfclrtmb.sh
+unset GITHUB_PAT GIT_PAT
 
 sparse_nuts_ref="${SPARSENUTS_REF:-}"
 stan_estimators_ref="${STANESTIMATORS_REF:-}"
